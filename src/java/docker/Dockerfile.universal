@@ -1,0 +1,79 @@
+# Enhanced cross-compilation environment with Android NDK support
+FROM ubuntu:22.04
+
+# Install basic dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    gcc-aarch64-linux-gnu \
+    gcc-arm-linux-gnueabihf \
+    gcc-mingw-w64 \
+    openjdk-8-jdk \
+    openjdk-8-jdk-headless \
+    make \
+    wget \
+    unzip \
+    file \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+
+# Download and install Android NDK
+ENV ANDROID_NDK_VERSION=r25c
+ENV ANDROID_NDK_ROOT=/opt/android-ndk
+RUN wget -q https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip -O /tmp/ndk.zip && \
+    unzip -q /tmp/ndk.zip -d /opt && \
+    mv /opt/android-ndk-${ANDROID_NDK_VERSION} ${ANDROID_NDK_ROOT} && \
+    rm /tmp/ndk.zip
+
+# Set up Android NDK environment
+ENV PATH=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin:${PATH}
+ENV ANDROID_NDK_HOME=${ANDROID_NDK_ROOT}
+
+# Create Android JNI headers directory
+RUN mkdir -p ${JAVA_HOME}/include/android && \
+    echo '#ifndef _JAVASOFT_JNI_MD_H_' > ${JAVA_HOME}/include/android/jni_md.h && \
+    echo '#define _JAVASOFT_JNI_MD_H_' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo '#define JNIEXPORT __attribute__ ((visibility ("default")))' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo '#define JNIIMPORT' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo '#define JNICALL' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo 'typedef int jint;' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo 'typedef long long jlong;' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo 'typedef signed char jbyte;' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/android/jni_md.h && \
+    echo '#endif /* !_JAVASOFT_JNI_MD_H_ */' >> ${JAVA_HOME}/include/android/jni_md.h
+
+# Create Windows JNI headers directory
+RUN mkdir -p ${JAVA_HOME}/include/win32 && \
+    echo '#ifndef _JAVASOFT_JNI_MD_H_' > ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#define _JAVASOFT_JNI_MD_H_' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#define JNIEXPORT __declspec(dllexport)' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#define JNIIMPORT __declspec(dllimport)' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#define JNICALL __stdcall' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo 'typedef long jint;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#ifdef __GNUC__' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo 'typedef long long jlong;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#else' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo 'typedef __int64 jlong;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#endif' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo 'typedef signed char jbyte;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#endif /* !_JAVASOFT_JNI_MD_H_ */' >> ${JAVA_HOME}/include/win32/jni_md.h
+
+# Create working directory
+WORKDIR /workspace
+
+# Copy source code
+COPY . .
+
+# Build script
+COPY docker/build-cross-universal.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/build-cross-universal.sh
+
+# Default command
+CMD ["/usr/local/bin/build-cross-universal.sh"]

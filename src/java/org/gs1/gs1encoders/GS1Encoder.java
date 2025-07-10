@@ -70,7 +70,7 @@ public class GS1Encoder {
 
     // Initialisation loads the gs1encoders JNI library interface
     static {
-        System.loadLibrary("gs1encoders");
+        NativeLibraryLoader.load("gs1encodersjni");
     }
 
     /**

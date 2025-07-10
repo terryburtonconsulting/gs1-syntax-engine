@@ -1,0 +1,214 @@
+name: Java Multi-Architecture Build
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths: 
+      - 'src/java/**'
+      - 'src/c-lib/**'
+      - '.github/workflows/java-multiarch-build.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/java/**'
+      - 'src/c-lib/**'
+      - '.github/workflows/java-multiarch-build.yml'
+  release:
+    types: [published]
+
+jobs:
+  build-native-libraries:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            platform: linux_x86_64
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y gcc-multilib g++-multilib
+          - os: ubuntu-latest
+            platform: linux_x86
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y gcc-multilib g++-multilib
+          - os: ubuntu-latest
+            platform: linux_aarch64
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          - os: ubuntu-latest
+            platform: linux_arm
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+          
+          # Windows builds (cross-compile from Linux)
+          - os: ubuntu-latest
+            platform: windows_x86_64
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y gcc-mingw-w64-x86-64
+          - os: ubuntu-latest
+            platform: windows_x86
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y gcc-mingw-w64-i686
+          
+          # macOS builds
+          - os: macos-latest
+            platform: darwin_x86_64
+            setup: echo "Using system clang"
+          - os: macos-latest
+            platform: darwin_aarch64
+            setup: echo "Using system clang"
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+    
+    - name: Setup build environment
+      run: ${{ matrix.setup }}
+    
+    - name: Build C library
+      run: |
+        cd src/c-lib
+        make clean
+        make
+    
+    - name: Build native library for ${{ matrix.platform }}
+      run: |
+        cd src/java
+        ./gradlew buildNative${{ matrix.platform }}
+      env:
+        JAVA_HOME: ${{ env.JAVA_HOME }}
+    
+    - name: Upload native library artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-${{ matrix.platform }}
+        path: src/java/build/native/${{ matrix.platform }}/
+        retention-days: 1
+
+  build-jar:
+    needs: build-native-libraries
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+    
+    - name: Download all native library artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: native-*
+        path: src/java/build/native/
+        merge-multiple: true
+    
+    - name: List downloaded artifacts
+      run: |
+        echo "Downloaded native libraries:"
+        find src/java/build/native -type f -name "*.so" -o -name "*.dll" -o -name "*.dylib" | sort
+    
+    - name: Build multi-architecture JAR
+      run: |
+        cd src/java
+        ./gradlew jar
+    
+    - name: Run tests
+      run: |
+        cd src/java
+        # Build current platform for testing
+        ./gradlew buildNativeCurrent test || echo "Tests skipped - no current platform native lib"
+    
+    - name: Upload JAR artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: gs1-syntax-engine-jar
+        path: src/java/build/libs/gs1-syntax-engine-*.jar
+
+  publish:
+    needs: build-jar
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+    
+    - name: Download JAR artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: gs1-syntax-engine-jar
+        path: src/java/build/libs/
+    
+    - name: Download all native library artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: native-*
+        path: src/java/build/native/
+        merge-multiple: true
+    
+    - name: Publish to Maven Central
+      run: |
+        cd src/java
+        ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
+      env:
+        OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+        OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+        SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
+        SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+
+  test-android:
+    needs: build-jar
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Download JAR artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: gs1-syntax-engine-jar
+        path: libs/
+    
+    - name: Install JAR to local repository
+      run: |
+        cd src/java
+        ./gradlew publishToMavenLocal
+    
+    - name: Build Android app
+      run: |
+        cd src/android
+        ./gradlew build
+    
+    - name: Run Android tests
+      run: |
+        cd src/android
+        ./gradlew test

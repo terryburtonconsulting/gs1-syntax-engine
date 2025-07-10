@@ -1,2 +1,4 @@
 *.class
 *.jar
+src/java/build/
+src/java/*.jar

@@ -344,9 +344,9 @@ task example(type: JavaExec) {
     systemProperty 'java.library.path', file("$buildDir/native/${getCurrentPlatform()}")
 }
 
-// Docker-based multi-architecture build task
+// Universal multi-architecture build task
 task buildMultiArch(type: Exec) {
-    description = 'Build multi-architecture JAR using Docker cross-compilation'
+    description = 'Build universal multi-architecture JAR (all platforms including Android) using Docker cross-compilation'
     group = 'native'
     
     workingDir = projectDir
@@ -354,60 +354,27 @@ task buildMultiArch(type: Exec) {
     def outputJar = file("$buildDir/gs1-syntax-engine-multiarch-${version}.jar")
     outputs.file(outputJar)
     
-    // Build Docker image if needed and run cross-compilation
+    // Build universal Docker image and run cross-compilation
     commandLine = [
         'docker', 'run', '--rm',
         '-v', "${projectDir.parentFile}:/workspace",
         '-w', '/workspace/java',
-        'gs1-cross-compiler',
-        '/bin/bash', '-c', """
-            echo 'Building multi-architecture JAR...'
-            
-            # Compile Java classes
-            mkdir -p build/classes
-            javac -d build/classes org/gs1/gs1encoders/*.java
-            
-            # Create JAR structure
-            mkdir -p build/multi-jar
-            cp -r build/classes/* build/multi-jar/
-            
-            # Add all native libraries to JAR
-            for platform_dir in build/native/*/; do
-                if [ -d "\$platform_dir" ]; then
-                    platform=\$(basename "\$platform_dir")
-                    echo "  Adding \$platform libraries..."
-                    mkdir -p "build/multi-jar/META-INF/lib/\$platform"
-                    
-                    find "\$platform_dir" -name '*.so' -o -name '*.dll' -o -name '*.dylib' | while read lib; do
-                        if [ -f "\$lib" ]; then
-                            cp "\$lib" "build/multi-jar/META-INF/lib/\$platform/"
-                            echo "    Added: META-INF/lib/\$platform/\$(basename "\$lib")"
-                        fi
-                    done
-                fi
-            done
-            
-            # Create the multi-architecture JAR
-            cd build/multi-jar
-            jar cf ../gs1-syntax-engine-multiarch-${version}.jar .
-            cd ../..
-            
-            echo "✅ Multi-architecture JAR completed: build/gs1-syntax-engine-multiarch-${version}.jar"
-        """.stripIndent()
+        'gs1-cross-compiler-universal',
+        'build-cross-universal.sh'
     ]
     
     doFirst {
-        // Check if Docker image exists, build if needed
+        // Check if universal Docker image exists, build if needed
         try {
             exec {
-                commandLine = ['docker', 'images', '-q', 'gs1-cross-compiler']
+                commandLine = ['docker', 'images', '-q', 'gs1-cross-compiler-universal']
                 standardOutput = new ByteArrayOutputStream()
             }
             if (standardOutput.toString().trim().isEmpty()) {
-                println "Building Docker cross-compilation image..."
+                println "Building universal Docker cross-compilation image..."
                 exec {
                     workingDir = projectDir
-                    commandLine = ['docker', 'build', '-t', 'gs1-cross-compiler', '-f', 'docker/Dockerfile.simple', '.']
+                    commandLine = ['docker', 'build', '-t', 'gs1-cross-compiler-universal', '-f', 'docker/Dockerfile.universal', '.']
                 }
             }
         } catch (Exception e) {
@@ -418,10 +385,14 @@ task buildMultiArch(type: Exec) {
     }
     
     doLast {
-        def sourceJar = file("build/gs1-syntax-engine-multiarch-${version}.jar")
-        if (sourceJar.exists()) {
-            sourceJar.renameTo(outputJar)
-            println "✅ Multi-architecture JAR ready: ${outputJar.relativePath(projectDir)}"
+        // Copy the universal JAR to the expected location
+        def sourceFiles = fileTree(dir: 'build', include: 'gs1-syntax-engine-multiarch-*.jar')
+        if (!sourceFiles.isEmpty()) {
+            def actualSourceJar = sourceFiles.first()
+            if (!actualSourceJar.equals(outputJar)) {
+                actualSourceJar.renameTo(outputJar)
+            }
+            println "✅ Universal multi-architecture JAR ready: ${outputJar.relativePath(projectDir)}"
             println "📦 JAR size: ${String.format("%.1f", outputJar.length() / (1024.0 * 1024.0))}MB"
             
             // Show included platforms
@@ -434,6 +405,8 @@ task buildMultiArch(type: Exec) {
                 .findAll { it.matches('META-INF/lib/.*/.*\\.(so|dll|dylib)') }
                 .sort()
                 .each { println "  ${it}" }
+        } else {
+            throw new GradleException("Universal JAR build failed - no output file found")
         }
     }
 }
@@ -454,6 +427,26 @@ task buildDockerImage(type: Exec) {
     
     doLast {
         println "✅ Docker image 'gs1-cross-compiler' built successfully"
+    }
+}
+
+// Task to build universal Docker image for cross-compilation
+task buildDockerImageUniversal(type: Exec) {
+    description = 'Build universal Docker image for cross-compilation (all platforms including Android)'
+    group = 'docker'
+    
+    workingDir = projectDir
+    commandLine = ['docker', 'build', '-t', 'gs1-cross-compiler-universal', '-f', 'docker/Dockerfile.universal', '.']
+    
+    inputs.files('docker/Dockerfile.universal', 'docker/build-cross-universal.sh')
+    
+    doFirst {
+        println "Building universal Docker cross-compilation environment..."
+        println "This will download Android NDK (~1GB) and may take several minutes..."
+    }
+    
+    doLast {
+        println "✅ Universal Docker image 'gs1-cross-compiler-universal' built successfully"
     }
 }
 

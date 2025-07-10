@@ -1,1 +1,0 @@
-../../../../../c-lib/gs1encoders.h

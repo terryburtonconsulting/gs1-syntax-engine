@@ -25,9 +25,7 @@ import java.util.Scanner;
 
 public class Example {
 
-    static {
-        System.loadLibrary("gs1encodersjni");
-    }
+    // Native library loading is now handled by GS1Encoder class via NativeLibraryLoader
 
     public static void main(final String args[]) {
 

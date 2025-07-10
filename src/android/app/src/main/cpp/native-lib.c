@@ -1,1 +1,0 @@
-../../../../../java/gs1encoders_wrap.c

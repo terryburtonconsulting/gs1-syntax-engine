@@ -89,6 +89,11 @@ public class NativeLibraryLoader {
         String osName = System.getProperty("os.name").toLowerCase();
         String osArch = System.getProperty("os.arch").toLowerCase();
         
+        // Handle Android specially
+        if (isAndroid()) {
+            return getAndroidPlatformPath(osArch);
+        }
+        
         String platform = null;
         for (Map.Entry<String, String> entry : PLATFORM_MAPPINGS.entrySet()) {
             if (osName.contains(entry.getKey())) {
@@ -103,6 +108,64 @@ public class NativeLibraryLoader {
         
         String arch = normalizeArch(osArch);
         return platform + "_" + arch;
+    }
+    
+    /**
+     * Get Android-specific platform path based on the ABI.
+     */
+    private static String getAndroidPlatformPath(String osArch) {
+        // On Android, we should also check the supported ABIs
+        String primaryAbi = null;
+        try {
+            // Try to get the primary ABI using reflection
+            Class<?> buildClass = Class.forName("android.os.Build");
+            Object supportedAbis = buildClass.getField("SUPPORTED_ABIS").get(null);
+            if (supportedAbis instanceof String[]) {
+                String[] abis = (String[]) supportedAbis;
+                if (abis.length > 0) {
+                    primaryAbi = abis[0];
+                }
+            }
+        } catch (Exception e) {
+            // Fall back to CPU_ABI for older Android versions
+            try {
+                Class<?> buildClass = Class.forName("android.os.Build");
+                primaryAbi = (String) buildClass.getField("CPU_ABI").get(null);
+            } catch (Exception ex) {
+                // Fall back to os.arch if all else fails
+            }
+        }
+        
+        // Map Android ABI to our platform naming
+        if (primaryAbi != null) {
+            switch (primaryAbi) {
+                case "arm64-v8a":
+                    return "android_arm64-v8a";
+                case "armeabi-v7a":
+                    return "android_armeabi-v7a";
+                case "x86_64":
+                    return "android_x86_64";
+                case "x86":
+                    return "android_x86";
+                default:
+                    // Fall through to architecture-based detection
+            }
+        }
+        
+        // Fall back to architecture-based detection
+        String normalizedArch = normalizeArch(osArch);
+        switch (normalizedArch) {
+            case "aarch64":
+                return "android_arm64-v8a";
+            case "arm":
+                return "android_armeabi-v7a";
+            case "x86_64":
+                return "android_x86_64";
+            case "x86":
+                return "android_x86";
+            default:
+                throw new UnsatisfiedLinkError("Unsupported Android architecture: " + osArch);
+        }
     }
     
     /**
