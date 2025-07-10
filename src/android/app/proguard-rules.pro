@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep GS1 Encoders native methods
+-keep class org.gs1.gs1encoders.** { *; }
+-keepclassmembers class org.gs1.gs1encoders.** {
+    native <methods>;
+}
+
+# Keep native library loader
+-keep class org.gs1.gs1encoders.NativeLibraryLoader { *; }
