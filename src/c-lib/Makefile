@@ -133,7 +133,10 @@ LDLIBS =
 LDFLAGS = -s -Wl,--as-needed -Wl,-Bsymbolic-functions $(SAN_LDFLAGS)
 LDFLAGS_SO = -shared -Wl,-soname,lib$(NAME).$(LIB_DYN_SUFFIX).$(MAJOR)
 LDFLAGS_APP_STATIC = -s
+# Allow CFLAGS_FORTIFY to be overridden for MinGW compatibility
+ifndef CFLAGS_FORTIFY
 CFLAGS_FORTIFY = -D_FORTIFY_SOURCE=2
+endif
 NPROC = nproc
 else
 LIB_DYN_SUFFIX = so
@@ -143,11 +146,23 @@ LDLIBS = -lc
 LDFLAGS = -s -Wl,--as-needed -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now $(SAN_LDFLAGS)
 LDFLAGS_SO = -shared -Wl,-soname,lib$(NAME).$(LIB_DYN_SUFFIX).$(MAJOR)
 LDFLAGS_APP_STATIC = -s
+# Allow CFLAGS_FORTIFY to be overridden for cross-compilation compatibility
+ifndef CFLAGS_FORTIFY
 CFLAGS_FORTIFY = -D_FORTIFY_SOURCE=2
+endif
 NPROC = nproc
 endif
 
-CFLAGS = $(CFLAGS_G) $(CFLAGS_O) $(CFLAGS_FORTIFY) $(CFLAGS_V) -Wall -Wextra -Wconversion -Wformat -Wformat-security -Wdeclaration-after-statement -pedantic -Werror -MMD -fPIC -DGS1_LINTER_ERR_STR_EN $(SAN_CFLAGS) $(UNIT_TEST_CFLAGS) $(DEBUG_CFLAGS) $(SLOW_TESTS_CFLAGS)
+# Allow disabling FORTIFY_SOURCE for MinGW compatibility
+ifdef DISABLE_FORTIFY_SOURCE
+CFLAGS_FORTIFY_FINAL = -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
+$(info DISABLE_FORTIFY_SOURCE is defined, using: $(CFLAGS_FORTIFY_FINAL))
+else
+CFLAGS_FORTIFY_FINAL = $(CFLAGS_FORTIFY)
+$(info DISABLE_FORTIFY_SOURCE not defined, using: $(CFLAGS_FORTIFY_FINAL))
+endif
+
+CFLAGS = $(CFLAGS_G) $(CFLAGS_O) $(CFLAGS_FORTIFY_FINAL) $(CFLAGS_V) -Wall -Wextra -Wconversion -Wformat -Wformat-security -Wdeclaration-after-statement -pedantic -Werror -MMD -fPIC -DGS1_LINTER_ERR_STR_EN $(SAN_CFLAGS) $(UNIT_TEST_CFLAGS) $(DEBUG_CFLAGS) $(SLOW_TESTS_CFLAGS)
 
 APP = $(BUILD_DIR)/$(NAME).$(BIN_SUFFIX)
 APP_STATIC = $(BUILD_DIR)/$(NAME)-static.$(BIN_SUFFIX)

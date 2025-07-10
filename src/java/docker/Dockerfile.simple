@@ -1,0 +1,50 @@
+# Simplified cross-compilation environment for GS1 Syntax Engine
+FROM ubuntu:22.04
+
+# Install cross-compilation toolchains and dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    gcc-aarch64-linux-gnu \
+    gcc-arm-linux-gnueabihf \
+    gcc-mingw-w64 \
+    openjdk-8-jdk \
+    openjdk-8-jdk-headless \
+    make \
+    wget \
+    file \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+
+# Create Windows JNI headers directory and add jni_md.h
+RUN mkdir -p ${JAVA_HOME}/include/win32 && \
+    echo '#ifndef _JAVASOFT_JNI_MD_H_' > ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#define _JAVASOFT_JNI_MD_H_' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#define JNIEXPORT __declspec(dllexport)' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#define JNIIMPORT __declspec(dllimport)' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#define JNICALL __stdcall' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo 'typedef long jint;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#ifdef __GNUC__' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo 'typedef long long jlong;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#else' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo 'typedef __int64 jlong;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#endif' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo 'typedef signed char jbyte;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/win32/jni_md.h && \
+    echo '#endif /* !_JAVASOFT_JNI_MD_H_ */' >> ${JAVA_HOME}/include/win32/jni_md.h
+
+# Create working directory
+WORKDIR /workspace
+
+# Copy source code
+COPY . .
+
+# Build script
+COPY docker/build-cross.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/build-cross.sh
+
+# Default command
+CMD ["/usr/local/bin/build-cross.sh"]

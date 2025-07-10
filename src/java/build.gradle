@@ -1,0 +1,484 @@
+plugins {
+    id 'java'
+    id 'maven-publish'
+    id 'signing'
+}
+
+group = 'org.gs1'
+archivesBaseName = 'gs1-syntax-engine'
+version = '1.1.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    withJavadocJar()
+    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+// Define supported platforms for cross-compilation
+def platforms = [
+    'linux_x86_64': [
+        'os': 'linux',
+        'arch': 'x86_64',
+        'cc': 'gcc',
+        'libname': 'libgs1encoders.so',
+        'jnilibname': 'libgs1encodersjni.so'
+    ],
+    'linux_x86': [
+        'os': 'linux',
+        'arch': 'x86',
+        'cc': 'gcc -m32',
+        'libname': 'libgs1encoders.so',
+        'jnilibname': 'libgs1encodersjni.so'
+    ],
+    'linux_aarch64': [
+        'os': 'linux',
+        'arch': 'aarch64',
+        'cc': 'aarch64-linux-gnu-gcc',
+        'libname': 'libgs1encoders.so',
+        'jnilibname': 'libgs1encodersjni.so'
+    ],
+    'linux_arm': [
+        'os': 'linux',
+        'arch': 'arm',
+        'cc': 'arm-linux-gnueabihf-gcc',
+        'libname': 'libgs1encoders.so',
+        'jnilibname': 'libgs1encodersjni.so'
+    ],
+    'darwin_x86_64': [
+        'os': 'darwin',
+        'arch': 'x86_64',
+        'cc': 'clang -target x86_64-apple-darwin',
+        'libname': 'libgs1encoders.dylib',
+        'jnilibname': 'libgs1encodersjni.dylib'
+    ],
+    'darwin_aarch64': [
+        'os': 'darwin',
+        'arch': 'aarch64',
+        'cc': 'clang -target arm64-apple-darwin',
+        'libname': 'libgs1encoders.dylib',
+        'jnilibname': 'libgs1encodersjni.dylib'
+    ],
+    'windows_x86_64': [
+        'os': 'windows',
+        'arch': 'x86_64',
+        'cc': 'x86_64-w64-mingw32-gcc',
+        'libname': 'gs1encoders.dll',
+        'jnilibname': 'gs1encodersjni.dll'
+    ],
+    'windows_x86': [
+        'os': 'windows',
+        'arch': 'x86',
+        'cc': 'i686-w64-mingw32-gcc',
+        'libname': 'gs1encoders.dll',
+        'jnilibname': 'gs1encodersjni.dll'
+    ]
+]
+
+// Tasks for building native libraries
+platforms.each { platformName, platformConfig ->
+    def buildNativeTask = tasks.register("buildNative${platformName.capitalize()}", Exec) {
+        description = "Build native library for ${platformName}"
+        group = 'native'
+        
+        def outputDir = file("$buildDir/native/${platformName}")
+        def cLibDir = file("../c-lib")
+        def wrapFile = file("gs1encoders_wrap.c")
+        
+        inputs.files(fileTree(cLibDir) { include '**/*.c', '**/*.h' })
+        inputs.file(wrapFile)
+        outputs.dir(outputDir)
+        
+        doFirst {
+            outputDir.mkdirs()
+        }
+        
+        workingDir = projectDir
+        
+        if (platformConfig.os == 'windows') {
+            commandLine = [
+                platformConfig.cc,
+                '-shared',
+                '-fPIC',
+                '-O2',
+                '-I', cLibDir.path,
+                '-I', "${System.getProperty('java.home')}/include",
+                '-I', "${System.getProperty('java.home')}/include/win32",
+                '-o', "${outputDir}/${platformConfig.jnilibname}",
+                wrapFile.path,
+                '-L', "${cLibDir}/build",
+                '-lgs1encoders'
+            ]
+        } else if (platformConfig.os == 'darwin') {
+            commandLine = [
+                'sh', '-c',
+                "${platformConfig.cc} -shared -fPIC -O2 " +
+                "-I${cLibDir.path} " +
+                "-I${System.getProperty('java.home')}/include " +
+                "-I${System.getProperty('java.home')}/include/darwin " +
+                "-o ${outputDir}/${platformConfig.jnilibname} " +
+                "${wrapFile.path} " +
+                "-L${cLibDir}/build -lgs1encoders"
+            ]
+        } else {
+            commandLine = [
+                'sh', '-c',
+                "${platformConfig.cc} -shared -fPIC -O2 -fvisibility=hidden " +
+                "-I${cLibDir.path} " +
+                "-I${System.getProperty('java.home')}/include " +
+                "-I${System.getProperty('java.home')}/include/linux " +
+                "-Wl,-Bsymbolic-functions -Wl,-z,relro " +
+                "-o ${outputDir}/${platformConfig.jnilibname} " +
+                "${wrapFile.path} " +
+                "-Wl,--whole-archive ${cLibDir}/build/libgs1encoders.a -Wl,--no-whole-archive"
+            ]
+        }
+        
+        onlyIf {
+            // Only build if cross-compiler is available
+            try {
+                def checkCommand = platformConfig.cc.split(' ')[0]
+                def result = exec {
+                    commandLine = ['which', checkCommand]
+                    ignoreExitValue = true
+                }
+                return result.exitValue == 0
+            } catch (Exception e) {
+                println "Cross-compiler not available for ${platformName}: ${e.message}"
+                return false
+            }
+        }
+    }
+    
+    // Make jar task depend on native builds
+    jar.dependsOn(buildNativeTask)
+}
+
+// Task to build current platform only (for development)
+task buildNativeCurrent(type: Exec) {
+    description = "Build native library for current platform"
+    group = 'native'
+    
+    def currentPlatform = getCurrentPlatform()
+    def outputDir = file("$buildDir/native/${currentPlatform}")
+    def cLibDir = file("../c-lib")
+    def wrapFile = file("gs1encoders_wrap.c")
+    
+    inputs.files(fileTree(cLibDir) { include '**/*.c', '**/*.h' })
+    inputs.file(wrapFile)
+    outputs.dir(outputDir)
+    
+    doFirst {
+        outputDir.mkdirs()
+    }
+    
+    workingDir = projectDir
+    
+    def os = System.getProperty('os.name').toLowerCase()
+    if (os.contains('windows')) {
+        commandLine = [
+            'gcc',
+            '-shared',
+            '-fPIC',
+            '-O2',
+            '-I', cLibDir.path,
+            '-I', "${System.getProperty('java.home')}/include",
+            '-I', "${System.getProperty('java.home')}/include/win32",
+            '-o', "${outputDir}/gs1encodersjni.dll",
+            wrapFile.path,
+            '-L', "${cLibDir}/build",
+            '-lgs1encoders'
+        ]
+    } else if (os.contains('mac')) {
+        commandLine = [
+            'clang',
+            '-shared',
+            '-fPIC',
+            '-O2',
+            '-I', cLibDir.path,
+            '-I', "${System.getProperty('java.home')}/include",
+            '-I', "${System.getProperty('java.home')}/include/darwin",
+            '-o', "${outputDir}/libgs1encodersjni.dylib",
+            wrapFile.path,
+            '-L', "${cLibDir}/build",
+            '-lgs1encoders'
+        ]
+    } else {
+        commandLine = [
+            'gcc',
+            '-shared',
+            '-fPIC',
+            '-O2',
+            '-fvisibility=hidden',
+            '-I', cLibDir.path,
+            '-I', "${System.getProperty('java.home')}/include",
+            '-I', "${System.getProperty('java.home')}/include/linux",
+            '-Wl,-Bsymbolic-functions',
+            '-Wl,-z,relro',
+            '-o', "${outputDir}/libgs1encodersjni.so",
+            wrapFile.path,
+            '-Wl,--whole-archive',
+            "${cLibDir}/build/libgs1encoders.a",
+            '-Wl,--no-whole-archive'
+        ]
+    }
+}
+
+// Custom jar task to include native libraries
+jar {
+    from sourceSets.main.output
+    
+    // Include native libraries in META-INF/lib/
+    platforms.each { platformName, platformConfig ->
+        def nativeDir = file("$buildDir/native/${platformName}")
+        if (nativeDir.exists()) {
+            from(nativeDir) {
+                into "META-INF/lib/${platformName}"
+            }
+        }
+    }
+    
+    // Include current platform for development
+    def currentPlatform = getCurrentPlatform()
+    def currentNativeDir = file("$buildDir/native/${currentPlatform}")
+    if (currentNativeDir.exists()) {
+        from(currentNativeDir) {
+            into "META-INF/lib/${currentPlatform}"
+        }
+    }
+    
+    manifest {
+        attributes(
+            'Implementation-Title': 'GS1 Syntax Engine',
+            'Implementation-Version': version,
+            'Implementation-Vendor': 'GS1 AISBL',
+            'Automatic-Module-Name': 'org.gs1.gs1encoders'
+        )
+    }
+}
+
+// Helper function to get current platform
+def getCurrentPlatform() {
+    def os = System.getProperty('os.name').toLowerCase()
+    def arch = System.getProperty('os.arch').toLowerCase()
+    
+    def osName = 'unknown'
+    if (os.contains('linux')) osName = 'linux'
+    else if (os.contains('mac')) osName = 'darwin'
+    else if (os.contains('windows')) osName = 'windows'
+    
+    def archName = 'unknown'
+    if (arch.contains('amd64') || arch.contains('x86_64')) archName = 'x86_64'
+    else if (arch.contains('x86')) archName = 'x86'
+    else if (arch.contains('aarch64') || arch.contains('arm64')) archName = 'aarch64'
+    else if (arch.contains('arm')) archName = 'arm'
+    
+    return "${osName}_${archName}"
+}
+
+// Test task
+test {
+    useJUnit()
+    
+    // Make sure native library is available for tests
+    dependsOn buildNativeCurrent
+    
+    systemProperty 'java.library.path', file("$buildDir/native/${getCurrentPlatform()}")
+}
+
+// Publishing configuration
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            
+            pom {
+                name = 'GS1 Syntax Engine'
+                description = 'Java wrapper for GS1 Barcode Syntax Engine'
+                url = 'https://github.com/gs1/gs1-syntax-engine'
+                
+                licenses {
+                    license {
+                        name = 'Apache License 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0'
+                    }
+                }
+                
+                developers {
+                    developer {
+                        name = 'GS1 AISBL'
+                        email = 'info@gs1.org'
+                    }
+                }
+                
+                scm {
+                    url = 'https://github.com/gs1/gs1-syntax-engine'
+                    connection = 'scm:git:git://github.com/gs1/gs1-syntax-engine.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/gs1/gs1-syntax-engine.git'
+                }
+            }
+        }
+    }
+}
+
+// Signing configuration (for Maven Central)
+signing {
+    sign publishing.publications.maven
+}
+
+// Example task
+task example(type: JavaExec) {
+    description = 'Run the example application'
+    group = 'application'
+    
+    dependsOn buildNativeCurrent, classes
+    
+    classpath = sourceSets.main.runtimeClasspath
+    main = 'Example'
+    args = ['--version']
+    
+    systemProperty 'java.library.path', file("$buildDir/native/${getCurrentPlatform()}")
+}
+
+// Docker-based multi-architecture build task
+task buildMultiArch(type: Exec) {
+    description = 'Build multi-architecture JAR using Docker cross-compilation'
+    group = 'native'
+    
+    workingDir = projectDir
+    
+    def outputJar = file("$buildDir/gs1-syntax-engine-multiarch-${version}.jar")
+    outputs.file(outputJar)
+    
+    // Build Docker image if needed and run cross-compilation
+    commandLine = [
+        'docker', 'run', '--rm',
+        '-v', "${projectDir.parentFile}:/workspace",
+        '-w', '/workspace/java',
+        'gs1-cross-compiler',
+        '/bin/bash', '-c', """
+            echo 'Building multi-architecture JAR...'
+            
+            # Compile Java classes
+            mkdir -p build/classes
+            javac -d build/classes org/gs1/gs1encoders/*.java
+            
+            # Create JAR structure
+            mkdir -p build/multi-jar
+            cp -r build/classes/* build/multi-jar/
+            
+            # Add all native libraries to JAR
+            for platform_dir in build/native/*/; do
+                if [ -d "\$platform_dir" ]; then
+                    platform=\$(basename "\$platform_dir")
+                    echo "  Adding \$platform libraries..."
+                    mkdir -p "build/multi-jar/META-INF/lib/\$platform"
+                    
+                    find "\$platform_dir" -name '*.so' -o -name '*.dll' -o -name '*.dylib' | while read lib; do
+                        if [ -f "\$lib" ]; then
+                            cp "\$lib" "build/multi-jar/META-INF/lib/\$platform/"
+                            echo "    Added: META-INF/lib/\$platform/\$(basename "\$lib")"
+                        fi
+                    done
+                fi
+            done
+            
+            # Create the multi-architecture JAR
+            cd build/multi-jar
+            jar cf ../gs1-syntax-engine-multiarch-${version}.jar .
+            cd ../..
+            
+            echo "✅ Multi-architecture JAR completed: build/gs1-syntax-engine-multiarch-${version}.jar"
+        """.stripIndent()
+    ]
+    
+    doFirst {
+        // Check if Docker image exists, build if needed
+        try {
+            exec {
+                commandLine = ['docker', 'images', '-q', 'gs1-cross-compiler']
+                standardOutput = new ByteArrayOutputStream()
+            }
+            if (standardOutput.toString().trim().isEmpty()) {
+                println "Building Docker cross-compilation image..."
+                exec {
+                    workingDir = projectDir
+                    commandLine = ['docker', 'build', '-t', 'gs1-cross-compiler', '-f', 'docker/Dockerfile.simple', '.']
+                }
+            }
+        } catch (Exception e) {
+            throw new GradleException("Docker is required for multi-architecture builds. Please install Docker and try again.", e)
+        }
+        
+        buildDir.mkdirs()
+    }
+    
+    doLast {
+        def sourceJar = file("build/gs1-syntax-engine-multiarch-${version}.jar")
+        if (sourceJar.exists()) {
+            sourceJar.renameTo(outputJar)
+            println "✅ Multi-architecture JAR ready: ${outputJar.relativePath(projectDir)}"
+            println "📦 JAR size: ${String.format("%.1f", outputJar.length() / (1024.0 * 1024.0))}MB"
+            
+            // Show included platforms
+            println "\nIncluded platforms:"
+            exec {
+                commandLine = ['jar', 'tf', outputJar.path]
+                standardOutput = new ByteArrayOutputStream()
+            }
+            standardOutput.toString().split('\n')
+                .findAll { it.matches('META-INF/lib/.*/.*\\.(so|dll|dylib)') }
+                .sort()
+                .each { println "  ${it}" }
+        }
+    }
+}
+
+// Task to build Docker image for cross-compilation
+task buildDockerImage(type: Exec) {
+    description = 'Build Docker image for cross-compilation'
+    group = 'docker'
+    
+    workingDir = projectDir
+    commandLine = ['docker', 'build', '-t', 'gs1-cross-compiler', '-f', 'docker/Dockerfile.simple', '.']
+    
+    inputs.files('docker/Dockerfile.simple', 'docker/build-cross.sh')
+    
+    doFirst {
+        println "Building Docker cross-compilation environment..."
+    }
+    
+    doLast {
+        println "✅ Docker image 'gs1-cross-compiler' built successfully"
+    }
+}
+
+// Task to run cross-compilation script directly
+task crossCompile(type: Exec) {
+    description = 'Run cross-compilation using Docker'
+    group = 'native'
+    
+    dependsOn buildDockerImage
+    
+    workingDir = projectDir
+    commandLine = [
+        'docker', 'run', '--rm',
+        '-v', "${projectDir.parentFile}:/workspace",
+        '-w', '/workspace/java',
+        'gs1-cross-compiler',
+        'build-cross.sh'
+    ]
+    
+    doFirst {
+        println "Running cross-compilation for all platforms..."
+    }
+}
+
+// Clean task
+clean {
+    delete buildDir
+}
