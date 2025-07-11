@@ -355,72 +355,9 @@ task example(type: JavaExec) {
     systemProperty 'java.library.path', file("$buildDir/native/${getCurrentPlatform()}")
 }
 
-// Universal multi-architecture build task
-task buildMultiArch(type: Exec) {
-    description = 'Build universal multi-architecture JAR (all platforms including Android) using Docker cross-compilation'
-    group = 'native'
-    
-    workingDir = projectDir
-    
-    def outputJar = file("$buildDir/gs1-syntax-engine-multiarch-${version}.jar")
-    outputs.file(outputJar)
-    
-    // Build universal Docker image and run cross-compilation
-    commandLine = [
-        'docker', 'run', '--rm',
-        '-v', "${projectDir.parentFile}:/workspace",
-        '-w', '/workspace/java',
-        'gs1-cross-compiler-universal',
-        'build-cross-universal.sh'
-    ]
-    
-    doFirst {
-        // Check if universal Docker image exists, build if needed
-        try {
-            exec {
-                commandLine = ['docker', 'images', '-q', 'gs1-cross-compiler-universal']
-                standardOutput = new ByteArrayOutputStream()
-            }
-            if (standardOutput.toString().trim().isEmpty()) {
-                println "Building universal Docker cross-compilation image..."
-                exec {
-                    workingDir = projectDir
-                    commandLine = ['docker', 'build', '-t', 'gs1-cross-compiler-universal', '-f', 'docker/Dockerfile.universal', '.']
-                }
-            }
-        } catch (Exception e) {
-            throw new GradleException("Docker is required for multi-architecture builds. Please install Docker and try again.", e)
-        }
-        
-        buildDir.mkdirs()
-    }
-    
-    doLast {
-        // Copy the universal JAR to the expected location
-        def sourceFiles = fileTree(dir: 'build', include: 'gs1-syntax-engine-multiarch-*.jar')
-        if (!sourceFiles.isEmpty()) {
-            def actualSourceJar = sourceFiles.first()
-            if (!actualSourceJar.equals(outputJar)) {
-                actualSourceJar.renameTo(outputJar)
-            }
-            println "✅ Universal multi-architecture JAR ready: ${outputJar.relativePath(projectDir)}"
-            println "📦 JAR size: ${String.format("%.1f", outputJar.length() / (1024.0 * 1024.0))}MB"
-            
-            // Show included platforms
-            println "\nIncluded platforms:"
-            exec {
-                commandLine = ['jar', 'tf', outputJar.path]
-                standardOutput = new ByteArrayOutputStream()
-            }
-            standardOutput.toString().split('\n')
-                .findAll { it.matches('META-INF/lib/.*/.*\\.(so|dll|dylib)') }
-                .sort()
-                .each { println "  ${it}" }
-        } else {
-            throw new GradleException("Universal JAR build failed - no output file found")
-        }
-    }
-}
+// Note: For building the universal multi-architecture JAR, use the standalone script:
+//   ./build-multiarch.sh
+// This avoids Java version compatibility issues since all compilation happens in Docker.
 
 // Task to build Docker image for cross-compilation
 task buildDockerImage(type: Exec) {
