@@ -15,6 +15,17 @@ java {
     withSourcesJar()
 }
 
+// Configure Gradle to work with newer Java versions while targeting Java 8
+compileJava {
+    options.release = 8
+}
+
+javadoc {
+    if(JavaVersion.current().isJava9Compatible()) {
+        options.addBooleanOption('html5', true)
+    }
+}
+
 repositories {
     mavenCentral()
 }
