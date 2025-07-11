@@ -2,3 +2,6 @@
 *.jar
 src/java/build/
 src/java/*.jar
+# Gradle downloads
+../gradle-*.zip
+../gradle-*/
