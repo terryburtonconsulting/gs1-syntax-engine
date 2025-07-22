@@ -1,0 +1,165 @@
+name: Build Universal JAR
+
+on:
+  push:
+    branches: [ main, multiarch ]
+  pull_request:
+    branches: [ main, multiarch ]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+      
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf \
+            make file
+      
+      - name: Build Linux libraries
+        run: |
+          cd src/java
+          ./build-linux-native.sh
+      
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-libs
+          path: src/java/build/native/linux_*
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+      
+      # Cache Android NDK (saves ~1GB download on subsequent runs)
+      - name: Cache Android NDK
+        uses: actions/cache@v4
+        id: ndk-cache
+        with:
+          path: android-ndk-r25c
+          key: android-ndk-r25c-v1
+          restore-keys: android-ndk-r25c-
+      
+      # Download NDK only if cache miss
+      - name: Download Android NDK
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Cache miss - downloading Android NDK (~1GB)..."
+          wget -q https://dl.google.com/android/repository/android-ndk-r25c-linux.zip
+          unzip -q android-ndk-r25c-linux.zip
+          rm android-ndk-r25c-linux.zip
+          echo "✅ Android NDK downloaded and extracted"
+      
+      - name: Build Android libraries
+        run: |
+          export ANDROID_NDK_ROOT=$PWD/android-ndk-r25c
+          export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cd src/java
+          ./build-android-native.sh
+      
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-libs
+          path: src/java/build/native/android_*
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+      
+      - name: Setup MSVC
+        uses: microsoft/setup-msbuild@v2
+      
+      - name: Build Windows libraries
+        run: |
+          cd src/java
+          .\build-windows.ps1
+      
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-libs
+          path: src/java/build/native/windows_*
+
+  build-macos:
+    runs-on: macos-latest
+    continue-on-error: true  # Don't fail pipeline if macOS fails
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+      
+      - name: Build macOS libraries
+        run: |
+          cd src/java
+          ./build-macos.sh
+      
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: macos-libs
+          path: src/java/build/native/darwin_*
+
+  assemble-universal-jar:
+    needs: [build-linux, build-android, build-windows, build-macos]
+    if: always()  # Run even if some builds failed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: artifacts/
+      
+      - name: Assemble universal JAR
+        run: |
+          cd src/java
+          ./assemble-universal-jar.sh
+      
+      - name: Upload universal JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-jar
+          path: src/java/build/gs1-syntax-engine-multiarch-*.jar
+      
+      - name: Show JAR contents
+        run: |
+          cd src/java
+          echo "📦 Universal JAR contents:"
+          jar tf build/gs1-syntax-engine-multiarch-*.jar | grep -E "\.(so|dll|dylib)$" | sort
