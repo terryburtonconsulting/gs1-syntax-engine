@@ -9,21 +9,8 @@ archivesBaseName = 'gs1-syntax-engine'
 version = '1.1.0'
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
     withJavadocJar()
     withSourcesJar()
-}
-
-// Configure Gradle to work with newer Java versions while targeting Java 8
-compileJava {
-    options.release = 8
-}
-
-javadoc {
-    if(JavaVersion.current().isJava9Compatible()) {
-        options.addBooleanOption('html5', true)
-    }
 }
 
 repositories {

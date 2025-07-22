@@ -24,6 +24,13 @@ if [ -n "$ANDROID_NDK_ROOT" ]; then
     [ -f "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android21-clang" ] && echo "✓ Android x86_64" || echo "✗ Android x86_64 not found"
     [ -f "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android21-clang" ] && echo "✓ Android x86" || echo "✗ Android x86 not found"
 fi
+
+# Check OSXCross compilers
+if [ -n "$OSXCROSS_ROOT" ]; then
+    echo "=== OSXCross Compilers ==="
+    [ -f "$OSXCROSS_ROOT/target/bin/o64-clang" ] && echo "✓ macOS x86_64" || echo "✗ macOS x86_64 not found"
+    [ -f "$OSXCROSS_ROOT/target/bin/oa64-clang" ] && echo "✓ macOS ARM64" || echo "✗ macOS ARM64 not found"
+fi
 echo
 
 # Build configurations
@@ -34,6 +41,10 @@ declare -A PLATFORMS=(
     ["linux_arm"]="arm-linux-gnueabihf-gcc"
     ["windows_x86_64"]="x86_64-w64-mingw32-gcc"
     ["windows_x86"]="i686-w64-mingw32-gcc"
+    
+    # macOS platforms (using OSXCross)
+    ["darwin_x86_64"]="o64-clang"
+    ["darwin_aarch64"]="oa64-clang"
     
     # Android platforms (using NDK)
     ["android_arm64"]="aarch64-linux-android21-clang"
@@ -90,6 +101,17 @@ for platform in "${!PLATFORMS[@]}"; do
         else
             build_success=false
         fi
+    elif [[ $platform == darwin_* ]]; then
+        # For macOS, use OSXCross toolchain
+        echo "Building C library for macOS with OSXCross..."
+        echo "Debug: Using OSXCross compiler $compiler"
+        make clean > /dev/null 2>&1 || true
+        echo "Running: make CC=$compiler"
+        if CC="$compiler" make > "build-$platform.log" 2>&1; then
+            build_success=true
+        else
+            build_success=false
+        fi
     elif [[ $platform == android_* ]]; then
         # For Android, use NDK toolchain
         echo "Building C library for Android with NDK..."
@@ -133,6 +155,13 @@ for platform in "${!PLATFORMS[@]}"; do
             lib_extension="so"
             lib_prefix="lib"
             java_include_os="linux"
+            compiler_flags="-shared -fPIC -O2 -fvisibility=hidden"
+            link_flags="../c-lib/build-$platform/libgs1encoders.a"
+            ;;
+        darwin_*)
+            lib_extension="dylib"
+            lib_prefix="lib"
+            java_include_os="darwin"
             compiler_flags="-shared -fPIC -O2 -fvisibility=hidden"
             link_flags="../c-lib/build-$platform/libgs1encoders.a"
             ;;

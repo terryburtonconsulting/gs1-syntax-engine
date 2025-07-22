@@ -1,7 +1,7 @@
 # Enhanced cross-compilation environment with Android NDK support
 FROM ubuntu:22.04
 
-# Install basic dependencies
+# Install basic dependencies including OSXCross requirements
 RUN apt-get update && apt-get install -y \
     gcc \
     gcc-aarch64-linux-gnu \
@@ -14,6 +14,18 @@ RUN apt-get update && apt-get install -y \
     unzip \
     file \
     python3 \
+    git \
+    clang \
+    llvm \
+    libbz2-dev \
+    libz-dev \
+    libxml2-dev \
+    liblzma-dev \
+    uuid-dev \
+    libssl-dev \
+    bash \
+    patch \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Set JAVA_HOME
@@ -64,6 +76,62 @@ RUN mkdir -p ${JAVA_HOME}/include/win32 && \
     echo 'typedef signed char jbyte;' >> ${JAVA_HOME}/include/win32/jni_md.h && \
     echo '' >> ${JAVA_HOME}/include/win32/jni_md.h && \
     echo '#endif /* !_JAVASOFT_JNI_MD_H_ */' >> ${JAVA_HOME}/include/win32/jni_md.h
+
+# Install OSXCross for macOS cross-compilation
+ENV OSXCROSS_ROOT=/opt/osxcross
+ENV PATH=${OSXCROSS_ROOT}/target/bin:${PATH}
+
+# Clone OSXCross
+RUN git clone https://github.com/tpoechtrager/osxcross.git ${OSXCROSS_ROOT}
+
+# Set up OSXCross build environment
+WORKDIR ${OSXCROSS_ROOT}
+
+# Copy a script to handle macOS SDK setup
+COPY docker/setup-macos-sdk.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/setup-macos-sdk.sh
+
+# Note: The macOS SDK will be provided at build time or extracted from Xcode
+# This allows users to legally provide their own SDK
+RUN echo '#!/bin/bash' > /usr/local/bin/build-osxcross.sh && \
+    echo 'if ls /tmp/docker/MacOSX*.sdk.tar.* 1> /dev/null 2>&1; then' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  echo "Building OSXCross with provided macOS SDK..."' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  cp /tmp/docker/MacOSX*.sdk.tar.* tarballs/' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  set +e' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  UNATTENDED=1 ./build.sh' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  if [ $? -eq 0 ]; then' >> /usr/local/bin/build-osxcross.sh && \
+    echo '    ./build_compiler_rt.sh' >> /usr/local/bin/build-osxcross.sh && \
+    echo '    echo "OSXCross build completed successfully"' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  else' >> /usr/local/bin/build-osxcross.sh && \
+    echo '    echo "Warning: OSXCross build failed (possibly unsupported SDK version). macOS compilation will be skipped."' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  fi' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  set -e' >> /usr/local/bin/build-osxcross.sh && \
+    echo 'else' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  echo "Warning: No macOS SDK provided. macOS compilation will be skipped."' >> /usr/local/bin/build-osxcross.sh && \
+    echo '  echo "To enable macOS support, provide MacOSX*.sdk.tar.xz in build context."' >> /usr/local/bin/build-osxcross.sh && \
+    echo 'fi' >> /usr/local/bin/build-osxcross.sh && \
+    chmod +x /usr/local/bin/build-osxcross.sh
+
+# Create macOS JNI headers directory
+RUN mkdir -p ${JAVA_HOME}/include/darwin && \
+    echo '#ifndef _JAVASOFT_JNI_MD_H_' > ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo '#define _JAVASOFT_JNI_MD_H_' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo '#define JNIEXPORT __attribute__((visibility("default")))' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo '#define JNIIMPORT' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo '#define JNICALL' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo 'typedef int jint;' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo 'typedef long long jlong;' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo 'typedef signed char jbyte;' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo '' >> ${JAVA_HOME}/include/darwin/jni_md.h && \
+    echo '#endif /* !_JAVASOFT_JNI_MD_H_ */' >> ${JAVA_HOME}/include/darwin/jni_md.h
+
+# Copy the entire docker directory (includes SDK if present)
+COPY docker/ /tmp/docker/
+
+# Build OSXCross if macOS SDK is available
+RUN /usr/local/bin/build-osxcross.sh
 
 # Create working directory
 WORKDIR /workspace
