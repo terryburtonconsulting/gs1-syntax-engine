@@ -112,7 +112,7 @@ jobs:
           path: src/java/build/native/windows_*
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-13  # Use macOS 13 which still supports JDK 8
     continue-on-error: true  # Don't fail pipeline if macOS fails
     steps:
       - uses: actions/checkout@v4
@@ -121,6 +121,15 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '8'
+          distribution: 'temurin'
+        continue-on-error: true
+        id: setup-jdk8
+      
+      - name: Set up JDK 11 (fallback)
+        if: steps.setup-jdk8.outcome == 'failure'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
           distribution: 'temurin'
       
       - name: Build macOS libraries
