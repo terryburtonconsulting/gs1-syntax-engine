@@ -30,3 +30,19 @@ src/js-wasm/gs1encoder-wasm.mem
 src/js-wasm/*.tgz
 .DS_Store
 **/project.xcworkspace/xcuserdata/*
+
+# Java build artifacts
+*.class
+src/java/build/
+
+# Build logs
+build-*.log
+*.log
+
+# Gradle downloads
+gradle-*.zip
+gradle-*/
+
+# Test scripts (temporary)
+test-*-docker.sh
+test-*-complete.sh
