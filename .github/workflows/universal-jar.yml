@@ -28,6 +28,7 @@ jobs:
       - name: Build Linux libraries
         run: |
           cd src/java
+          chmod +x build-linux.sh
           ./build-linux.sh
       
       - name: Upload Linux artifacts
@@ -71,6 +72,7 @@ jobs:
           export ANDROID_NDK_ROOT=$PWD/android-ndk-r25c
           export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           cd src/java
+          chmod +x build-android.sh
           ./build-android.sh
       
       - name: Upload Android artifacts
@@ -90,13 +92,18 @@ jobs:
           java-version: '8'
           distribution: 'temurin'
       
-      - name: Setup MSVC
+      - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
+      
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       
       - name: Build Windows libraries
         run: |
           cd src/java
-          .\build-windows.ps1
+          ./build-windows.ps1
       
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -119,6 +126,7 @@ jobs:
       - name: Build macOS libraries
         run: |
           cd src/java
+          chmod +x build-macos.sh
           ./build-macos.sh
       
       - name: Upload macOS artifacts
@@ -150,6 +158,7 @@ jobs:
       - name: Assemble universal JAR
         run: |
           cd src/java
+          chmod +x assemble-universal-jar.sh
           ./assemble-universal-jar.sh
       
       - name: Upload universal JAR
