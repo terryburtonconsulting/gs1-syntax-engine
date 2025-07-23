@@ -28,6 +28,8 @@ NAME = gs1encoders
 
 BUILD_DIR = build
 
+# Build tools (can be overridden by environment variables)
+RANLIB ?= ranlib
 
 ARCH := $(shell $(CC) -dumpmachine)
 ifneq (, $(findstring darwin, $(ARCH)))
@@ -252,7 +254,7 @@ endif
 #
 $(BUILD_DIR)/lib$(NAME).$(LIB_STATIC_SUFFIX): $(OBJS)
 	$(AR) cr $@ $^
-	ranlib $@
+	$(RANLIB) $@
 
 
 #

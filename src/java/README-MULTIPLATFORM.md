@@ -5,15 +5,15 @@ The universal JAR is now built using a **split platform approach** where each pl
 ## Overview
 
 ### **Split Platform Architecture**
-- **Linux**: Built natively on Ubuntu with cross-compilation toolchains
-- **Android**: Built natively on Ubuntu with cached Android NDK  
-- **Windows**: Built natively on Windows with MSVC
-- **macOS**: Built natively on macOS with native Xcode toolchain
+- **Linux**: Built on Ubuntu with cross-compilation toolchains
+- **Android**: Built on Ubuntu with cached Android NDK  
+- **Windows**: Built on Windows with MSVC
+- **macOS**: Built on macOS with Xcode toolchain
 
 ### **Benefits**
 - ✅ **Faster builds** - No Docker overhead for most platforms
-- ✅ **More reliable** - Each platform uses its native/optimal toolchain
-- ✅ **Better debugging** - Direct access to native build processes
+- ✅ **More reliable** - Each platform uses its optimal toolchain
+- ✅ **Better debugging** - Direct access to build processes
 - ✅ **Parallel execution** - All platforms build simultaneously in CI
 - ✅ **Graceful degradation** - JAR can be built with subset of platforms
 
@@ -26,11 +26,11 @@ The universal JAR is now built using a **split platform approach** where each pl
 cd src/java
 
 # Linux developers
-./build-linux-native.sh
+./build-linux.sh
 
 # Android (requires Android NDK)
 export ANDROID_NDK_ROOT=/path/to/android-ndk-r25c
-./build-android-native.sh
+./build-android.sh
 
 # Windows developers (PowerShell)
 .\build-windows.ps1
@@ -59,7 +59,7 @@ sudo apt-get install -y gcc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf openjd
 
 # Build
 cd src/java
-./build-linux-native.sh
+./build-linux.sh
 ```
 
 **Builds:**
@@ -76,7 +76,7 @@ unzip android-ndk-r25c-linux.zip
 # Set environment and build
 export ANDROID_NDK_ROOT=$PWD/android-ndk-r25c
 cd src/java
-./build-android-native.sh
+./build-android.sh
 ```
 
 **Builds:**
@@ -192,7 +192,7 @@ gs1-syntax-engine-multiarch-1.1.0.jar
 ### **Single Platform Development**
 ```bash  
 # Just build for your development platform
-./build-linux-native.sh  # or build-macos.sh, etc.
+./build-linux.sh  # or build-macos.sh, etc.
 
 # Create JAR with just your platform (for testing)
 ./assemble-universal-jar.sh --allow-missing-platforms
@@ -244,22 +244,16 @@ ls build/native/
 ./assemble-universal-jar.sh --allow-missing-platforms
 ```
 
-## Migration from Docker Build
+## Build Architecture
 
-### **Old Docker Approach**
-```bash
-# Old way - everything in Docker
-./build-multiarch.sh
-```
+The build system uses **platform-specific builds** where each platform is built using its optimal toolchain:
 
-### **New Split Approach**  
 ```bash
-# New way - platform-specific native builds
-./build-linux-native.sh     # Fast native build
-./build-android-native.sh   # With cached NDK  
-./build-windows.ps1         # On Windows
-./build-macos.sh           # On macOS
+./build-linux.sh           # Fast build with cross-compilers
+./build-android.sh   # With cached NDK  
+./build-windows.ps1         # On Windows with MSVC
+./build-macos.sh           # On macOS with Xcode
 ./assemble-universal-jar.sh # Combine everything
 ```
 
-The new approach is **faster, more reliable, and easier to debug** while maintaining the same universal JAR output.
+This approach is **faster, more reliable, and easier to debug** than cross-compilation alternatives.

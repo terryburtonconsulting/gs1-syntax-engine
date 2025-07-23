@@ -1,116 +1,187 @@
-# macOS Support for Universal Multi-Architecture JAR
+# macOS Library Build
 
-The universal JAR can include native libraries for macOS (both Intel and Apple Silicon) using OSXCross for cross-compilation from Linux.
+The universal JAR includes libraries for macOS (both Intel and Apple Silicon) built on macOS using Xcode toolchain.
 
 ## Prerequisites
 
-1. **Legal macOS SDK**: You must legally obtain a macOS SDK from Xcode on a Mac system
-2. **Docker**: Required for the cross-compilation environment
+1. **macOS**: Requires macOS system for builds
+2. **Xcode Command Line Tools**: `xcode-select --install`
+3. **Java 8+**: Set `JAVA_HOME` environment variable
 
-## Quick Start
+## Quick Setup
 
-### Step 1: Extract macOS SDK (on macOS)
-
-On a Mac with Xcode installed, run the SDK extraction helper:
-
+### Install Xcode Command Line Tools
 ```bash
-cd src/java/docker
-./setup-macos-sdk.sh
+xcode-select --install
 ```
 
-This will create a file like `MacOSX14.2.sdk.tar.xz` (~2-3 GB).
-
-### Step 2: Copy SDK to Build System
-
-Copy the SDK file to your Linux build system:
-
+### Set JAVA_HOME
 ```bash
-# Copy to the docker directory
-cp MacOSX*.sdk.tar.xz /path/to/gs1-syntax-engine/src/java/docker/
+# For Temurin/AdoptOpenJDK
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
+
+# For Oracle JDK
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_XXX.jdk/Contents/Home
+
+# Add to ~/.zshrc or ~/.bash_profile to make permanent
+echo 'export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home' >> ~/.zshrc
 ```
 
-### Step 3: Build Universal JAR with macOS Support
+## Build Process
 
+### macOS Build
 ```bash
 cd src/java
-./build-multiarch.sh
+./build-macos.sh
 ```
 
-The build script will automatically detect the macOS SDK and include macOS libraries in the JAR.
-
-## Supported macOS Architectures
-
+This builds:
 - **darwin_x86_64**: Intel Macs (2006-2023)
-- **darwin_aarch64**: Apple Silicon M1/M2/M3 (2020+)
+- **darwin_aarch64**: Apple Silicon M1/M2/M3/M4 (2020+)
 
-## How It Works
+### Build Configuration
 
-1. **OSXCross Installation**: Docker image includes OSXCross cross-compilation toolchain
-2. **SDK Detection**: Build automatically detects and uses provided macOS SDK
-3. **Cross-Compilation**: Compiles native libraries for both Intel and Apple Silicon
-4. **JAR Integration**: Includes `.dylib` files in universal JAR alongside other platforms
+The build script automatically:
+1. Detects available architectures (x86_64 and/or arm64)
+2. Sets deployment target to macOS 11.0 (configurable)
+3. Cross-compiles from Intel to Apple Silicon if needed
+4. Creates universal dylib files when both architectures available
 
-## Total Platform Support
+## Integration with Universal JAR
 
-With macOS support enabled, the universal JAR supports **11 platforms**:
+### Local Development
+```bash
+# After building macOS libraries
+./assemble-universal-jar.sh --allow-missing-platforms
+```
 
-### Desktop/Server (7 platforms)
-- Linux: x86_64, ARM64, ARM32
-- Windows: x86_64, x86
-- **macOS: x86_64, ARM64** ← New!
+### CI/CD Integration
+The GitHub Actions workflow includes a dedicated macOS runner:
 
-### Mobile (4 platforms)
-- Android: arm64-v8a, armeabi-v7a, x86_64, x86
+```yaml
+build-macos:
+  runs-on: macos-latest
+  steps:
+    - uses: actions/checkout@v3
+    - name: Set up JDK 8
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+    - name: Build macOS libraries
+      run: |
+        cd src/java
+        ./build-macos.sh
+```
 
-## Legal Considerations
+## Build Output
 
-⚠️ **Important**: The macOS SDK is subject to Apple's licensing terms:
+### Library Structure
+```
+build/native/
+├── darwin_x86_64/
+│   ├── libgs1encoders.a
+│   └── libgs1encodersjni.dylib
+└── darwin_aarch64/
+    ├── libgs1encoders.a
+    └── libgs1encodersjni.dylib
+```
 
-- You must legally obtain the SDK from your own Xcode installation
-- The SDK cannot be redistributed
-- Each developer must extract their own SDK
+### JAR Integration
+Libraries are embedded in the universal JAR as:
+```
+META-INF/lib/
+├── darwin_x86_64/libgs1encodersjni.dylib
+└── darwin_aarch64/libgs1encodersjni.dylib
+```
 
-## Without macOS SDK
+## Performance
 
-If no macOS SDK is provided:
-- Build continues normally
-- JAR includes 9 platforms (Linux, Windows, Android)
-- macOS platforms are gracefully skipped
-- No impact on other platform support
-
-## File Sizes
-
-- **Docker image**: ~6-8 GB (with OSXCross + SDK)
-- **Universal JAR**: ~1.4-1.6 MB (with macOS libraries)
-- **macOS SDK**: ~2-3 GB (not included in final JAR)
+| Architecture | Build Time | Notes |
+|--------------|------------|-------|
+| darwin_x86_64 | ~30 sec | Build on Intel Mac |
+| darwin_aarch64 | ~30 sec | Build on Apple Silicon Mac |
+| Cross-compile | ~45 sec | Building both archs on single machine |
 
 ## Troubleshooting
 
-### "No macOS SDK provided"
+### "Command line tools not found"
+```bash
+xcode-select --install
+# If already installed, try:
+sudo xcode-select --reset
 ```
-Warning: No macOS SDK provided. macOS compilation will be skipped.
-To enable macOS support, provide MacOSX*.sdk.tar.xz in build context.
+
+### "JAVA_HOME not set"
+```bash
+# Find Java installations
+/usr/libexec/java_home -V
+
+# Set JAVA_HOME to Java 8
+export JAVA_HOME=$(/usr/libexec/java_home -v 1.8)
 ```
-**Solution**: Extract SDK using `setup-macos-sdk.sh` on macOS and copy to `docker/` directory.
 
-### "OSXCross compilers not found"
+### "Cannot find jni.h"
+```bash
+# Verify JAVA_HOME includes headers
+ls $JAVA_HOME/include/
+# Should show: jni.h jni_md.h
+
+# If missing, install JDK (not just JRE)
 ```
-✗ macOS x86_64 not found
-✗ macOS ARM64 not found
+
+### Architecture Issues
+```bash
+# Check what architectures your Mac supports
+uname -m
+# x86_64 = Intel Mac
+# arm64 = Apple Silicon Mac
+
+# Check built libraries
+file build/native/darwin_*/libgs1encodersjni.dylib
 ```
-**Solution**: Ensure macOS SDK was properly provided during Docker build.
 
-### Docker build fails with OSXCross
-**Solution**: Make sure you have sufficient disk space (~10 GB) for the larger Docker image.
+### Build Fails on Apple Silicon
+Some issues with mixed architectures:
+```bash
+# Clear any cached builds
+make clean -C ../c-lib
 
-## Manual SDK Extraction
+# Ensure consistent architecture
+arch -arm64 ./build-macos.sh  # Force ARM64
+arch -x86_64 ./build-macos.sh # Force Intel (under Rosetta)
+```
 
-If the helper script doesn't work, manually extract the SDK:
+## Development Notes
+
+### Deployment Target
+The build targets macOS 11.0+ by default. To change:
 
 ```bash
-# On macOS with Xcode installed
-cd /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
-tar -czf ~/MacOSX.sdk.tar.xz MacOSX.sdk
+# Edit build-macos.sh
+export MACOSX_DEPLOYMENT_TARGET=10.15  # For older macOS support
 ```
 
-Then copy the tarball to your Linux build system's `docker/` directory.
+### Universal Libraries
+If you need single universal libraries (fat binaries):
+```bash
+# After building both architectures
+lipo -create \
+  build/native/darwin_x86_64/libgs1encodersjni.dylib \
+  build/native/darwin_aarch64/libgs1encodersjni.dylib \
+  -output libgs1encodersjni-universal.dylib
+```
+
+### Debugging
+```bash
+# Check library dependencies
+otool -L build/native/darwin_*/libgs1encodersjni.dylib
+
+# Check symbols
+nm -D build/native/darwin_*/libgs1encodersjni.dylib | grep Java
+
+# Verify architecture
+lipo -info build/native/darwin_*/libgs1encodersjni.dylib
+```
+
+The macOS build approach provides faster, more reliable builds compared to cross-compilation alternatives, while maintaining full compatibility with both Intel and Apple Silicon Macs.

@@ -98,8 +98,8 @@ copy_platform_artifacts "darwin_*" "macOS" || true
 if [ -z "$PLATFORMS_INCLUDED" ]; then
     echo "❌ No platform libraries found to include in JAR"
     echo "   Make sure to run platform build scripts first:"
-    echo "   - ./build-linux-native.sh"
-    echo "   - ./build-android-native.sh (requires Android NDK)"
+    echo "   - ./build-linux.sh"
+    echo "   - ./build-android.sh (requires Android NDK)"
     echo "   - ./build-windows.ps1 (on Windows)"
     echo "   - ./build-macos.sh (on macOS)"
     exit 1

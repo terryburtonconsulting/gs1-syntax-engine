@@ -60,7 +60,7 @@ for platform in "${!PLATFORMS[@]}"; do
     
     # Build C library
     make clean > /dev/null 2>&1 || true
-    if CC="$compiler" make > "build-$platform.log" 2>&1; then
+    if CC="$NDK_BIN/$compiler" AR="$NDK_BIN/llvm-ar" RANLIB="$NDK_BIN/llvm-ranlib" make > "build-$platform.log" 2>&1; then
         mkdir -p ../java/build/native/$platform
         cp build/libgs1encoders.a ../java/build/native/$platform/
         echo "✓ C library built for $platform"
@@ -92,13 +92,13 @@ for platform in "${!PLATFORMS[@]}"; do
             ;;
     esac
     
-    if $compiler -shared -fPIC -O2 -fvisibility=hidden \
+    if "$NDK_BIN/$compiler" -shared -fPIC -O2 -fvisibility=hidden \
         -I../c-lib \
         -I"$JAVA_HOME/include" \
         -I"$JAVA_HOME/include/linux" \
         -o "$output_file" \
         gs1encoders_wrap.c \
-        "../c-lib/build-$platform/libgs1encoders.a" > "build/native/$platform/build.log" 2>&1; then
+        "build/native/$platform/libgs1encoders.a" > "build/native/$platform/build.log" 2>&1; then
         
         echo "✓ Successfully built $platform JNI library"
         

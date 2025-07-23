@@ -29,17 +29,14 @@ attempt_build() {
 
 # Linux build (works on Linux/macOS/WSL with cross-compilers)
 if command -v gcc >/dev/null 2>&1; then
-    attempt_build "Linux" "./build-linux-native.sh" "gcc cross-compilation tools"
+    attempt_build "Linux" "./build-linux.sh" "gcc cross-compilation tools"
 else
     echo "⚠️  GCC not found, skipping Linux build"
 fi
 
 # Android build (works anywhere with NDK)
 if [ ! -z "$ANDROID_NDK_ROOT" ] && [ -d "$ANDROID_NDK_ROOT" ]; then
-    attempt_build "Android" "./build-android-native.sh" "Android NDK at \$ANDROID_NDK_ROOT"
-elif command -v docker >/dev/null 2>&1; then
-    echo "⚠️  Android NDK not found, but Docker available"
-    echo "   Consider using the old Docker build for Android"
+    attempt_build "Android" "./build-android.sh" "Android NDK at \$ANDROID_NDK_ROOT"
 else
     echo "⚠️  Android NDK not found (\$ANDROID_NDK_ROOT), skipping Android build"
     echo "   Set ANDROID_NDK_ROOT to enable Android builds"
@@ -63,8 +60,6 @@ case "$OSTYPE" in
     linux*)
         echo "🐧 Detected Linux"
         echo "   Linux libraries will be built above"
-        # Windows builds could potentially work under Wine
-        # macOS builds could potentially work under OSXCross (but we moved away from that)
         ;;
 esac
 

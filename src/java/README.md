@@ -53,12 +53,20 @@ This directory contains the Java wrapper for the GS1 Syntax Engine, packaged as 
 ./gradlew jar
 ```
 
-### Cross-Compilation with Docker
+### Multi-Platform Builds
 
 ```bash
-# Build using Docker cross-compilation environment
-docker build -f docker/Dockerfile.crossbuild -t gs1-crossbuild .
-docker run --rm -v $(pwd):/workspace gs1-crossbuild
+# Build all available platforms natively
+./build-all-platforms.sh
+
+# Or build specific platforms:
+./build-linux.sh           # Linux (with cross-compilation)
+./build-android.sh         # Android (requires ANDROID_NDK_ROOT)
+./build-macos.sh            # macOS (native)
+./build-windows.ps1         # Windows (native)
+
+# Assemble universal JAR
+./assemble-universal-jar.sh
 ```
 
 ## Usage
@@ -210,7 +218,7 @@ If you encounter `UnsatisfiedLinkError`:
 
 - Ensure C library is built first: `cd ../c-lib && make`
 - Check cross-compilation toolchains are installed
-- For Docker builds, ensure Docker daemon is running
+- For Android builds, ensure ANDROID_NDK_ROOT is set correctly
 
 ## License
 

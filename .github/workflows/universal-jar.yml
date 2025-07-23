@@ -28,7 +28,7 @@ jobs:
       - name: Build Linux libraries
         run: |
           cd src/java
-          ./build-linux-native.sh
+          ./build-linux.sh
       
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
@@ -71,7 +71,7 @@ jobs:
           export ANDROID_NDK_ROOT=$PWD/android-ndk-r25c
           export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           cd src/java
-          ./build-android-native.sh
+          ./build-android.sh
       
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
