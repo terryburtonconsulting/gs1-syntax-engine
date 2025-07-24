@@ -67,8 +67,12 @@ foreach ($platform in $platforms.Keys) {
     # Create build directory
     New-Item -ItemType Directory -Force -Path "build" | Out-Null
     
-    # Build C library
-    $cFiles = Get-ChildItem -Filter "*.c" | ForEach-Object { $_.Name }
+    # Build C library (exclude test and app files)
+    $cFiles = Get-ChildItem -Filter "*.c" | Where-Object { 
+        $_.Name -notlike "*-test.c" -and 
+        $_.Name -notlike "*-app.c" -and 
+        $_.Name -notlike "*-fuzzer*.c" 
+    } | ForEach-Object { $_.Name }
     $clArgs = @("/O2", "/c") + $cFiles
     
     try {
