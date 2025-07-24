@@ -329,6 +329,20 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
+    - name: Install cross-compilation tools for JAR build
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf \
+          make file
+
+    - name: Build required JAR dependency
+      run: |
+        cd src/java
+        chmod +x build-linux.sh assemble-universal-jar.sh
+        ./build-linux.sh
+        ./assemble-universal-jar.sh --allow-missing-platforms
+
     - name: Android app CI
       working-directory: src/android
       run: |
