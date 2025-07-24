@@ -68,12 +68,16 @@ foreach ($platform in $platforms.Keys) {
     New-Item -ItemType Directory -Force -Path "build" | Out-Null
     
     # Build C library (exclude test and app files)
-    $cFiles = Get-ChildItem -Filter "*.c" | Where-Object { 
+    $cFiles = @()
+    $cFiles += Get-ChildItem -Filter "*.c" | Where-Object { 
         $_.Name -notlike "*-test.c" -and 
         $_.Name -notlike "*-app.c" -and 
         $_.Name -notlike "*-fuzzer*.c" 
     } | ForEach-Object { $_.Name }
-    $clArgs = @("/O2", "/c") + $cFiles
+    $cFiles += Get-ChildItem -Path "syntax" -Filter "*.c" | Where-Object { 
+        $_.Name -notlike "*-test.c" 
+    } | ForEach-Object { "syntax\$($_.Name)" }
+    $clArgs = @("/O2", "/c", "/DGS1_LINTER_ERR_STR_EN") + $cFiles
     
     try {
         & cl @clArgs 2>&1 | Tee-Object -FilePath "build-$platform.log"
